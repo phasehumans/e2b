@@ -1,14 +1,17 @@
 const {Router} = require('express')
 const userRouter = Router()
-const {z} = require('zod')
+const {z, email} = require('zod')
 const bcrypt = require('bcrypt')
 const {UserModel} = require('../db')
+const jwt = require('jsonwebtoken')
+const dotenv = require('dotenv')
 
+dotenv.config()
 
 userRouter.post('/signup', async (req, res) => {
     const requiredBody = z.object({
-        email : z.email().string(),
-        password : z.string().string().min(5).max(20),
+        email : z.string().email(),
+        password : z.string().min(5).max(20),
         firstName : z.string(),
         lastName : z.string()
     })
@@ -19,8 +22,10 @@ userRouter.post('/signup', async (req, res) => {
             message: "invalid input",
             err: parsedData.error
         })
+        return
     }
 
+    // const {email, password, firstName, lastName} = req.body
     const email = req.body.email
     const password = req.body.password
     const firstName = req.body.firstName
@@ -36,17 +41,64 @@ userRouter.post('/signup', async (req, res) => {
             password : hashPassword
         })
     } catch (error) {
-        
+        res.json({
+            message : "sign-up failed",
+            error : error
+        })
+        return
     }
 
     res.json({
-        message : "you are logged in"
+        message : "sign-up completed"
     })
 
 })
 
-userRouter.post('/signin', (req, res) => {
+userRouter.post('/signin', async (req, res) => {
+    const requiredBody = z.object({
+        email : z.string().email(),
+        password : z.string().min(5).max(20)
+    })
 
+    const parsedData = requiredBody.safeParse(req.body)
+
+    if(!parsedData.success){
+        res.json({
+            message: "invalid input",
+            error : parsedData.error
+        })
+        return
+    }
+
+    const email = req.body.email
+    const password = req.body.password
+
+    const user = await UserModel.findOne({
+        email : email
+    })
+
+    if(!user){
+        res.json({
+            message : "user doesnot exist"
+        })
+    }
+
+    const passwordMatch = bcrypt.compare(password, user.password)
+
+    if(passwordMatch){
+            const token = jwt.sign({
+                id : user.id
+            }, process.env.JWT_SECRET_USER);
+
+        res.json({
+            token : token
+        })
+
+    }else{
+        res.status(403).json({
+            message : "incorrect email or password"
+        })
+    }
 })
 
 userRouter.get('/purchases', (req, res) => {
